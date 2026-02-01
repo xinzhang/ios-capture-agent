@@ -1,0 +1,31 @@
+{
+  "appId": "com.ioscapture.agent",
+  "productName": "iOS Capture Agent",
+  "directories": {
+    "output": "dist"
+  },
+  "files": [
+    "dist/**/*",
+    "package.json"
+  ],
+  "mac": {
+    "target": ["dmg", "zip"],
+    "category": "public.app-category.productivity",
+    "hardenedRuntime": false,
+    "gatekeeperAssess": false
+  },
+  "dmg": {
+    "contents": [
+      {
+        "x": 130,
+        "y": 220
+      },
+      {
+        "x": 410,
+        "y": 220,
+        "type": "link",
+        "path": "/Applications"
+      }
+    ]
+  }
+}

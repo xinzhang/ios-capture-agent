@@ -1,0 +1,51 @@
+{
+  "name": "ios-capture-agent",
+  "version": "1.0.0",
+  "description": "iOS Screen Capture & Question Extraction Agent",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run build:main && vite build",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "vite build",
+    "electron": "cross-env NODE_ENV=development electron .",
+    "electron:dev": "npm run build:main && concurrently \"npm run dev\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
+    "electron:dev:watch": "concurrently \"npm run dev:watch\" \"cross-env NODE_ENV=development electron .\"",
+    "dev:watch": "vite",
+    "electron:build": "npm run build && electron-builder",
+    "lint": "eslint src --ext .ts,.tsx"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.2.2",
+    "dotenv": "^16.3.1",
+    "openai": "^4.20.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "screenshot-desktop": "^1.15.0",
+    "sharp": "^0.33.1",
+    "tesseract.js": "^5.0.3",
+    "zustand": "^4.4.7"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/react": "^18.2.47",
+    "@types/react-dom": "^18.2.18",
+    "@typescript-eslint/eslint-plugin": "^6.18.0",
+    "@typescript-eslint/parser": "^6.18.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.16",
+    "concurrently": "^8.2.2",
+    "cross-env": "^10.1.0",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "eslint": "^8.56.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.5",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.11",
+    "vitest": "^1.1.0",
+    "wait-on": "^7.2.0"
+  }
+}
