@@ -2,7 +2,7 @@ import screenshot from 'screenshot-desktop';
 import sharp from 'sharp';
 import { BrowserWindow } from 'electron';
 import { detectChange } from './changeDetection.js';
-import { processOCR } from './ocrProcessor.js';
+import { processOCR } from './llmOCRProcessor.js';
 import { detectChangeDirection } from './changeDirectionDetector.js';
 
 export interface Bounds {
