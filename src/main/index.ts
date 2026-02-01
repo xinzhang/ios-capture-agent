@@ -170,4 +170,16 @@ function registerIPCHandlers() {
       electronVersion: process.versions.electron,
     };
   });
+
+  // Capture full screen for region selection
+  ipcMain.handle('capture_full_screen', async () => {
+    try {
+      const screenshot = await import('screenshot-desktop');
+      const img = await screenshot.default();
+      return `data:image/png;base64,${img.toString('base64')}`;
+    } catch (error) {
+      console.error('Failed to capture full screen:', error);
+      throw error;
+    }
+  });
 }
