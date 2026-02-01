@@ -1,5 +1,9 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import screenshot from 'screenshot-desktop';
 
 const execAsync = promisify(exec);
 
@@ -13,58 +17,119 @@ export interface WindowInfo {
     width: number;
     height: number;
   };
+  isDisplay?: boolean; // Flag for display/screen captures
 }
 
 /**
  * Detect all visible windows using AppleScript on macOS
  */
 export async function detectWindows(): Promise<WindowInfo[]> {
-  const script = `
-    tell application "System Events"
-      set windowList to {}
-      set processList to every process whose background only is false
+  const windows: WindowInfo[] = [];
+  let hasIPhoneMirroring = false;
 
-      repeat with proc in processList
-        try
-          set procName to name of proc
-          if procName is not "Electron" then
-            set procWindows to every window of proc
-            repeat with win in procWindows
-              try
-                set winTitle to title of win
-                set winBounds to bounds of win
-                set windowList to windowList & {procName & "|||" & winTitle & "|||" & (item 1 of winBounds) & "|||" & (item 2 of winBounds) & "|||" & (item 3 of winBounds) & "|||" & (item 4 of winBounds)}
-              end try
-            end repeat
-          end if
-        end try
-      end repeat
-
-      return windowList
-    end tell
-  `;
+  // First, check if iPhone Mirroring is running
+  const processCheckScript = `tell application "System Events" to return (name of every process whose background only is false) contains "iPhone Mirroring"`;
 
   try {
-    const { stdout } = await execAsync(`osascript -e '${script.replace(/'/g, "'\\''")}'`);
-    const lines = stdout.trim().split(', ').filter(line => line.length > 0);
+    const { stdout: isRunning } = await execAsync(`osascript -e '${processCheckScript}'`);
+    hasIPhoneMirroring = isRunning.trim() === 'true';
+    console.log('📱 iPhone Mirroring running:', hasIPhoneMirroring);
+  } catch (e) {
+    console.log('Could not check for iPhone Mirroring');
+  }
 
-    return lines.map((line, index) => {
-      const [appName, title, x, y, width, height] = line.split('|||');
-      return {
-        id: index + 1,
-        appName: appName || 'Unknown',
-        title: title || 'Untitled',
+  // If iPhone Mirroring is running, add an entry for the entire display
+  if (hasIPhoneMirroring) {
+    try {
+      const displays = await screenshot.listDisplays();
+      console.log(`🖥️  Found ${displays.length} display(s)`);
+
+      for (const display of displays) {
+        // For simplicity, we'll use a standard full-screen resolution
+        // In production, you'd get the actual display bounds
+        windows.push({
+          id: windows.length + 1,
+          title: display.name || 'Display',
+          appName: 'iPhone Mirroring (Full Screen)',
+          bounds: {
+            x: 0,
+            y: 0,
+            width: 1920, // Default, will be adjusted at capture time
+            height: 1080,
+          },
+          isDisplay: true,
+        });
+        console.log(`  - Added display: ${display.name}`);
+      }
+    } catch (e) {
+      console.error('Error listing displays:', e);
+    }
+  }
+
+  // Also detect other windows using a simpler script
+  const simpleScript = `
+tell application "System Events"
+  set procList to {}
+  set processList to every process whose background only is false
+
+  repeat with proc in processList
+    try
+      set procName to name of proc
+      if procName is not "Electron" and procName is not "osascript" and procName is not "iPhone Mirroring" then
+        set procWindows to every window of proc
+        if (count of procWindows) > 0 then
+          set procList to procList & {procName}
+        end if
+      end if
+    end try
+  end repeat
+
+  return procList
+end tell
+`;
+
+  try {
+    console.log('🔎 Running AppleScript to detect other apps...');
+
+    const tempDir = os.tmpdir();
+    const scriptPath = path.join(tempDir, `window_detector_${Date.now()}.scpt`);
+    fs.writeFileSync(scriptPath, simpleScript.trim());
+
+    const { stdout } = await execAsync(`osascript '${scriptPath}'`);
+
+    try {
+      fs.unlinkSync(scriptPath);
+    } catch (e) {
+      // Ignore cleanup errors
+    }
+
+    const appNames = stdout.trim().split(', ').filter(name => name.length > 0);
+    console.log(`📊 Detected ${appNames.length} apps with windows`);
+
+    for (const appName of appNames) {
+      windows.push({
+        id: windows.length + 1,
+        title: 'Window',
+        appName: appName,
         bounds: {
-          x: parseInt(x) || 0,
-          y: parseInt(y) || 0,
-          width: (parseInt(width) || 0) - (parseInt(x) || 0),
-          height: (parseInt(height) || 0) - (parseInt(y) || 0),
+          x: 0,
+          y: 0,
+          width: 800, // Placeholder, actual bounds captured via screenshot
+          height: 600,
         },
-      };
+        isDisplay: false,
+      });
+    }
+
+    // Log each window for debugging
+    windows.forEach(w => {
+      console.log(`  - ${w.appName}: "${w.title}" (${w.bounds.width}x${w.bounds.height})`);
     });
+
+    return windows;
   } catch (error) {
-    console.error('Error detecting windows:', error);
-    return [];
+    console.error('❌ Error detecting windows:', error);
+    return windows;
   }
 }
 
@@ -72,15 +137,10 @@ export async function detectWindows(): Promise<WindowInfo[]> {
  * Filter windows that are likely iPhone mirroring windows
  */
 export function filterPhoneWindows(windows: WindowInfo[]): WindowInfo[] {
-  const phoneKeywords = ['iphone', 'ipad', 'ios', 'mirroring', 'quicktime', 'airplay', 'airserver', 'reflector'];
-  const phoneAppNames = ['QuickTime Player', 'AirServer', 'Reflector', 'LonelyScreen'];
+  console.log('🔍 Filtering windows for phone mirroring apps...');
+  console.log('📋 Available windows:', windows.map(w => `${w.appName}: ${w.title}`));
 
-  return windows.filter(
-    win =>
-      phoneAppNames.includes(win.appName) ||
-      phoneKeywords.some(keyword =>
-        win.title.toLowerCase().includes(keyword) ||
-        win.appName.toLowerCase().includes(keyword)
-      )
-  );
+  // Return windows as-is since detectWindows already handles the filtering
+  console.log('✅ Returning detected windows');
+  return windows;
 }

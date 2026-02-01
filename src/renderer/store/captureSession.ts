@@ -71,7 +71,7 @@ export const useCaptureSession = create<CaptureSessionStore>((set, get) => {
 
       try {
         console.log('▶️  Starting recording for window:', selectedWindow);
-        await window.electron.startRecording(selectedWindow.id, selectedWindow.bounds);
+        await window.electron.startRecording(selectedWindow.id, selectedWindow.bounds, selectedWindow.isDisplay || false);
         set({ isRecording: true, isPaused: false, capturedScreens: [], processingStatus: 'capturing' });
       } catch (error) {
         console.error('Failed to start recording:', error);

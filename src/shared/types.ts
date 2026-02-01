@@ -3,12 +3,14 @@
 export interface WindowInfo {
   id: number;
   title: string;
+  appName: string;
   bounds: {
     x: number;
     y: number;
     width: number;
     height: number;
   };
+  isDisplay?: boolean;
 }
 
 export interface Capture {

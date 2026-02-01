@@ -16,6 +16,7 @@ interface CaptureState {
   isPaused: boolean;
   windowId: number | null;
   bounds: Bounds | null;
+  isDisplay: boolean; // True if capturing full display
   intervalId: NodeJS.Timeout | null;
   lastImageBuffer: Buffer | null;
   captureCount: number;
@@ -26,6 +27,7 @@ const state: CaptureState = {
   isPaused: false,
   windowId: null,
   bounds: null,
+  isDisplay: false,
   intervalId: null,
   lastImageBuffer: null,
   captureCount: 0,
@@ -40,18 +42,20 @@ const CHANGE_THRESHOLD = 0.05; // 5% pixel difference threshold
 export async function startRecording(
   windowId: number,
   bounds: Bounds,
-  mainWindow: BrowserWindow | null
+  mainWindow: BrowserWindow | null,
+  isDisplay: boolean = false
 ): Promise<void> {
   if (state.isRecording) {
     throw new Error('Recording is already in progress');
   }
 
-  console.log('Starting screen capture for window:', windowId);
+  console.log('Starting screen capture for window:', windowId, 'isDisplay:', isDisplay);
 
   state.isRecording = true;
   state.isPaused = false;
   state.windowId = windowId;
   state.bounds = bounds;
+  state.isDisplay = isDisplay;
   state.lastImageBuffer = null;
   state.captureCount = 0;
 
@@ -128,26 +132,30 @@ async function captureAndProcess(mainWindow: BrowserWindow | null): Promise<void
   try {
     console.log('Capturing screen...');
 
-    // Capture the specific region
+    // Capture the full screen
     const img = await screenshot({
       screen: getScreenNumber(state.bounds),
       format: 'png',
     });
 
-    // Load image with sharp
-    const image = sharp(img);
+    let currentBuffer: Buffer;
 
-    // Extract the window region
-    const { x, y, width, height } = state.bounds;
-    const croppedImage = image.extract({
-      left: x,
-      top: y,
-      width: width,
-      height: height,
-    });
-
-    // Get buffer for comparison
-    const currentBuffer = await croppedImage.png().toBuffer();
+    if (state.isDisplay) {
+      // For full display capture (iPhone Mirroring), use the entire screenshot
+      console.log('📱 Capturing full display (iPhone Mirroring mode)');
+      currentBuffer = img;
+    } else {
+      // For window capture, extract the specific region
+      console.log('🪟 Capturing window region');
+      const image = sharp(img);
+      const { x, y, width, height } = state.bounds;
+      currentBuffer = await image.extract({
+        left: x,
+        top: y,
+        width: width,
+        height: height,
+      }).png().toBuffer();
+    }
 
     // Check for changes
     const hasChanged = await detectChange(state.lastImageBuffer, currentBuffer, CHANGE_THRESHOLD);

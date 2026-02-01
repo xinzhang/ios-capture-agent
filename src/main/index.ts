@@ -96,10 +96,10 @@ function registerIPCHandlers() {
   });
 
   // Start recording
-  ipcMain.handle('start_recording', async (_event, windowId: number, bounds: any) => {
-    console.log('Starting recording for window:', windowId, 'bounds:', bounds);
+  ipcMain.handle('start_recording', async (_event, windowId: number, bounds: any, isDisplay: boolean) => {
+    console.log('Starting recording for window:', windowId, 'bounds:', bounds, 'isDisplay:', isDisplay);
     try {
-      await startRecording(windowId, bounds, mainWindow);
+      await startRecording(windowId, bounds, mainWindow, isDisplay);
       return { success: true };
     } catch (error) {
       console.error('Failed to start recording:', error);
