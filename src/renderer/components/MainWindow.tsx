@@ -1,6 +1,7 @@
 import React from 'react';
 import WindowPreview from './WindowPreview';
 import Controls from './Controls';
+import PagesList from './PagesList';
 import OCRContent from './OCRContent';
 import CapturedScreensList from './CapturedScreensList';
 import StatusBar from './StatusBar';
@@ -14,9 +15,10 @@ export default function MainWindow() {
           {/* Left panel: Window preview */}
           <WindowPreview />
 
-          {/* Right panel: Controls, OCR content, captured screens */}
+          {/* Right panel: Controls, Pages, OCR content, captured screens */}
           <div className="flex flex-col gap-4 overflow-hidden">
             <Controls />
+            <PagesList />
             <div className="flex-1 flex flex-col gap-4 overflow-hidden">
               <OCRContent />
               <CapturedScreensList />

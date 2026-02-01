@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { WindowInfo, Capture, OCRResult } from '@shared/types';
+import type { WindowInfo, Capture, OCRResult, ScreenshotWithDirection } from '@shared/types';
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
@@ -35,6 +35,15 @@ contextBridge.exposeInMainWorld('electron', {
     ipcRenderer.on('recording-state-changed', (_event, state) => callback(state));
   },
 
+  // Page event listeners
+  onPageEvent: (callback: (data: { event: string }) => void) => {
+    ipcRenderer.on('page-event', (_event, data) => callback(data));
+  },
+
+  onPageScreenshot: (callback: (screenshot: ScreenshotWithDirection) => void) => {
+    ipcRenderer.on('page-screenshot', (_event, screenshot) => callback(screenshot));
+  },
+
   // Remove listeners
   removeAllListeners: (channel: string) => {
     ipcRenderer.removeAllListeners(channel);
@@ -57,6 +66,8 @@ declare global {
       onCaptureUpdate: (callback: (capture: Capture) => void) => void;
       onOCRComplete: (callback: (result: OCRResult) => void) => void;
       onRecordingStateChanged: (callback: (state: string) => void) => void;
+      onPageEvent: (callback: (data: { event: string }) => void) => void;
+      onPageScreenshot: (callback: (screenshot: ScreenshotWithDirection) => void) => void;
       removeAllListeners: (channel: string) => void;
     };
   }

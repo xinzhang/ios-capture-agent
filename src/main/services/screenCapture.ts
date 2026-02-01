@@ -3,6 +3,7 @@ import sharp from 'sharp';
 import { BrowserWindow } from 'electron';
 import { detectChange } from './changeDetection.js';
 import { processOCR } from './ocrProcessor.js';
+import { detectChangeDirection } from './changeDirectionDetector.js';
 
 export interface Bounds {
   x: number;
@@ -20,6 +21,7 @@ interface CaptureState {
   intervalId: NodeJS.Timeout | null;
   lastImageBuffer: Buffer | null;
   captureCount: number;
+  firstCapture: boolean; // Track if this is the first capture
 }
 
 const state: CaptureState = {
@@ -31,6 +33,7 @@ const state: CaptureState = {
   intervalId: null,
   lastImageBuffer: null,
   captureCount: 0,
+  firstCapture: true,
 };
 
 const CAPTURE_INTERVAL_MS = 2000; // Capture every 2 seconds
@@ -58,9 +61,13 @@ export async function startRecording(
   state.isDisplay = isDisplay;
   state.lastImageBuffer = null;
   state.captureCount = 0;
+  state.firstCapture = true;
 
   // Send initial state update
   sendStateUpdate(mainWindow, 'recording');
+
+  // Start a new page
+  sendPageEvent(mainWindow, 'new-page');
 
   // Start capture loop
   state.intervalId = setInterval(() => {
@@ -157,25 +164,30 @@ async function captureAndProcess(mainWindow: BrowserWindow | null): Promise<void
       }).png().toBuffer();
     }
 
-    // Check for changes
-    const hasChanged = await detectChange(state.lastImageBuffer, currentBuffer, CHANGE_THRESHOLD);
+    // Handle first capture
+    if (state.firstCapture || !state.lastImageBuffer) {
+      console.log('📸 First capture, initializing...');
 
-    if (hasChanged || state.captureCount === 0) {
-      console.log('✅ Change detected! Processing capture #' + (state.captureCount + 1));
-
-      // Update last image buffer
       state.lastImageBuffer = currentBuffer;
       state.captureCount++;
+      state.firstCapture = false;
 
-      // Convert to base64 for sending to renderer
       const base64Image = `data:image/png;base64,${currentBuffer.toString('base64')}`;
 
-      // Process OCR
+      // Process OCR for first capture
       console.log('🔍 Starting OCR processing...');
       const ocrResult = await processOCR(base64Image);
-      console.log('✅ OCR completed, sending capture update to renderer...');
+      console.log('✅ OCR completed');
 
-      // Send capture update to renderer
+      // Send screenshot to page
+      sendPageScreenshot(mainWindow, {
+        id: `shot-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        imageData: base64Image,
+        ocrText: ocrResult.rawText,
+      });
+
+      // Also send legacy capture update for compatibility
       sendCaptureUpdate(mainWindow, {
         id: Date.now(),
         windowId: state.windowId || 0,
@@ -183,10 +195,121 @@ async function captureAndProcess(mainWindow: BrowserWindow | null): Promise<void
         screenshot: base64Image,
         ocrResult: ocrResult,
       });
-      console.log('✅ Capture update sent!');
-    } else {
-      console.log('⏭️  No significant change detected, skipping capture');
+      return;
     }
+
+    // Check for direction change
+    const directionResult = await detectChangeDirection(state.lastImageBuffer, currentBuffer);
+    console.log('🧭 Direction result:', directionResult);
+
+    // Check if we have significant change
+    const hasChanged = await detectChange(state.lastImageBuffer, currentBuffer, CHANGE_THRESHOLD);
+
+    if (!hasChanged && directionResult.direction === 'none') {
+      console.log('⏭️  No significant change detected, skipping capture');
+      return;
+    }
+
+    state.lastImageBuffer = currentBuffer;
+    state.captureCount++;
+
+    const base64Image = `data:image/png;base64,${currentBuffer.toString('base64')}`;
+
+    // Handle horizontal swipe / new screen
+    if (directionResult.direction === 'horizontal' || directionResult.direction === 'major') {
+      console.log('🔄 New screen detected! Finalizing current page and starting new one');
+
+      // Finalize current page
+      sendPageEvent(mainWindow, 'finalize-page');
+
+      // Start new page
+      sendPageEvent(mainWindow, 'new-page');
+
+      // Process OCR for new screen
+      console.log('🔍 Starting OCR processing...');
+      const ocrResult = await processOCR(base64Image);
+      console.log('✅ OCR completed');
+
+      // Add screenshot to new page
+      sendPageScreenshot(mainWindow, {
+        id: `shot-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        imageData: base64Image,
+        ocrText: ocrResult.rawText,
+      });
+
+      // Send legacy capture update
+      sendCaptureUpdate(mainWindow, {
+        id: Date.now(),
+        windowId: state.windowId || 0,
+        timestamp: new Date().toISOString(),
+        screenshot: base64Image,
+        ocrResult: ocrResult,
+      });
+      return;
+    }
+
+    // Handle vertical scroll
+    if (directionResult.direction === 'vertical') {
+      console.log('↕️ Vertical scroll detected, direction:', directionResult.scrollDirection);
+
+      if (directionResult.scrollDirection === 'down') {
+        // Scroll down - capture + OCR
+        console.log('⬇️  Scrolled DOWN - capturing with OCR');
+
+        const ocrResult = await processOCR(base64Image);
+        console.log('✅ OCR completed');
+
+        sendPageScreenshot(mainWindow, {
+          id: `shot-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          imageData: base64Image,
+          ocrText: ocrResult.rawText,
+        });
+      } else {
+        // Scroll up - capture only, no OCR
+        console.log('⬆️  Scrolled UP - capturing without OCR');
+
+        sendPageScreenshot(mainWindow, {
+          id: `shot-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          imageData: base64Image,
+          isScrollUp: true,
+        });
+      }
+
+      // Send legacy capture update
+      sendCaptureUpdate(mainWindow, {
+        id: Date.now(),
+        windowId: state.windowId || 0,
+        timestamp: new Date().toISOString(),
+        screenshot: base64Image,
+        ocrResult: directionResult.scrollDirection === 'down' ? await processOCR(base64Image) : undefined,
+      });
+      return;
+    }
+
+    // Default: treat as regular change with OCR
+    console.log('✅ Regular change detected, processing with OCR');
+
+    const ocrResult = await processOCR(base64Image);
+    console.log('✅ OCR completed');
+
+    sendPageScreenshot(mainWindow, {
+      id: `shot-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      imageData: base64Image,
+      ocrText: ocrResult.rawText,
+    });
+
+    sendCaptureUpdate(mainWindow, {
+      id: Date.now(),
+      windowId: state.windowId || 0,
+      timestamp: new Date().toISOString(),
+      screenshot: base64Image,
+      ocrResult: ocrResult,
+    });
+
   } catch (error) {
     console.error('Error during screen capture:', error);
   }
@@ -240,4 +363,42 @@ function sendStateUpdate(
  */
 export function getState(): CaptureState {
   return { ...state };
+}
+
+/**
+ * Send page event to renderer
+ */
+function sendPageEvent(
+  mainWindow: BrowserWindow | null,
+  event: 'new-page' | 'finalize-page'
+): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    console.error('❌ Cannot send page event: window is null or destroyed');
+    return;
+  }
+
+  console.log('📄 Sending page event:', event);
+  mainWindow.webContents.send('page-event', { event });
+}
+
+/**
+ * Send screenshot to current page
+ */
+function sendPageScreenshot(
+  mainWindow: BrowserWindow | null,
+  screenshot: {
+    id: string;
+    timestamp: string;
+    imageData: string;
+    ocrText?: string;
+    isScrollUp?: boolean;
+  }
+): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    console.error('❌ Cannot send page screenshot: window is null or destroyed');
+    return;
+  }
+
+  console.log('📸 Sending page screenshot:', screenshot.id, 'isScrollUp:', screenshot.isScrollUp);
+  mainWindow.webContents.send('page-screenshot', screenshot);
 }

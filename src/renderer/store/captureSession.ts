@@ -1,5 +1,10 @@
 import { create } from 'zustand';
-import type { CaptureSessionStore, WindowInfo, Capture } from '@shared/types';
+import type { CaptureSessionStore, WindowInfo, Capture, Page, ScreenshotWithDirection } from '@shared/types';
+
+// Generate unique ID
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
 
 // Setup IPC listeners
 function setupIPCListeners(set: any) {
@@ -30,6 +35,30 @@ function setupIPCListeners(set: any) {
       }));
     });
   }
+
+  // Listen for page events
+  if (window.electron.onPageEvent) {
+    window.electron.onPageEvent((data: { event: string }) => {
+      console.log('📄 Received page event:', data.event);
+
+      if (data.event === 'new-page') {
+        const store = useCaptureSession.getState();
+        store.startNewPage();
+      } else if (data.event === 'finalize-page') {
+        const store = useCaptureSession.getState();
+        store.finalizeCurrentPage();
+      }
+    });
+  }
+
+  // Listen for page screenshots
+  if (window.electron.onPageScreenshot) {
+    window.electron.onPageScreenshot((screenshot: ScreenshotWithDirection) => {
+      console.log('📸 Received page screenshot:', screenshot.id, 'isScrollUp:', screenshot.isScrollUp);
+      const store = useCaptureSession.getState();
+      store.addScreenshotToPage(screenshot);
+    });
+  }
 }
 
 export const useCaptureSession = create<CaptureSessionStore>((set, get) => {
@@ -46,6 +75,11 @@ export const useCaptureSession = create<CaptureSessionStore>((set, get) => {
     currentPreview: null,
     ocrText: '',
     processingStatus: 'idle',
+
+    // Pages state
+    pages: [],
+    currentPageId: null,
+    selectedPageId: null,
 
     // Actions
     loadWindows: async () => {
@@ -126,6 +160,95 @@ export const useCaptureSession = create<CaptureSessionStore>((set, get) => {
 
     clearCaptures: () => {
       set({ capturedScreens: [], ocrText: '', currentPreview: null });
+    },
+
+    // Pages actions
+    startNewPage: () => {
+      const state = get();
+      const newPage: Page = {
+        id: generateId(),
+        index: state.pages.length + 1,
+        startTime: new Date().toISOString(),
+        screenshots: [],
+        combinedOCR: '',
+        status: 'active',
+      };
+      console.log('📄 Starting new page:', newPage.index);
+      set({
+        pages: [...state.pages, newPage],
+        currentPageId: newPage.id,
+      });
+    },
+
+    addScreenshotToPage: (screenshot: ScreenshotWithDirection) => {
+      const state = get();
+      if (!state.currentPageId) {
+        console.warn('No active page, creating new page first');
+        get().startNewPage();
+      }
+
+      const currentPageId = get().currentPageId;
+      if (!currentPageId) return;
+
+      const updatedPages = state.pages.map((page) => {
+        if (page.id === currentPageId) {
+          const updatedScreenshots = [...page.screenshots, screenshot];
+
+          // Combine OCR text
+          const combinedOCR = screenshot.ocrText
+            ? [...page.screenshots, screenshot]
+                .filter((s) => s.ocrText)
+                .map((s) => s.ocrText)
+                .join('\n\n')
+            : page.combinedOCR;
+
+          return {
+            ...page,
+            screenshots: updatedScreenshots,
+            combinedOCR,
+          };
+        }
+        return page;
+      });
+
+      console.log('📸 Added screenshot to page, total screenshots:',
+        updatedPages.find((p) => p.id === currentPageId)?.screenshots.length
+      );
+
+      set({ pages: updatedPages });
+    },
+
+    finalizeCurrentPage: () => {
+      const state = get();
+      if (!state.currentPageId) return;
+
+      const updatedPages = state.pages.map((page) => {
+        if (page.id === state.currentPageId) {
+          return {
+            ...page,
+            status: 'complete' as const,
+            endTime: new Date().toISOString(),
+          };
+        }
+        return page;
+      });
+
+      console.log('✅ Finalized page:', state.currentPageId);
+      set({
+        pages: updatedPages,
+        currentPageId: null,
+      });
+    },
+
+    selectPage: (pageId: string) => {
+      console.log('📖 Selecting page:', pageId);
+      set({ selectedPageId: pageId });
+    },
+
+    getCurrentPage: () => {
+      const state = get();
+      if (!state.currentPageId) return null;
+      return state.pages.find((p) => p.id === state.currentPageId) || null;
     },
   };
 });

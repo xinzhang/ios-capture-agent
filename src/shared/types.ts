@@ -13,6 +13,24 @@ export interface WindowInfo {
   isDisplay?: boolean;
 }
 
+export interface ScreenshotWithDirection {
+  id: string;
+  timestamp: string;
+  imageData: string; // base64
+  ocrText?: string;
+  isScrollUp?: boolean; // true if scroll up (no OCR)
+}
+
+export interface Page {
+  id: string;
+  index: number;
+  startTime: string;
+  endTime?: string;
+  screenshots: ScreenshotWithDirection[];
+  combinedOCR: string;
+  status: 'active' | 'complete';
+}
+
 export interface Capture {
   id: string | number;
   windowId: number;
@@ -62,6 +80,11 @@ export interface CaptureSessionStore {
   ocrText: string;
   processingStatus: 'idle' | 'processing' | 'completed' | 'failed';
 
+  // Pages state
+  pages: Page[];
+  currentPageId: string | null;
+  selectedPageId: string | null;
+
   // Actions
   loadWindows: () => Promise<void>;
   selectWindow: (window: WindowInfo) => void;
@@ -73,4 +96,11 @@ export interface CaptureSessionStore {
   updatePreview: (image: string) => void;
   updateOCRText: (text: string) => void;
   clearCaptures: () => void;
+
+  // Pages actions
+  startNewPage: () => void;
+  addScreenshotToPage: (screenshot: ScreenshotWithDirection) => void;
+  finalizeCurrentPage: () => void;
+  selectPage: (pageId: string) => void;
+  getCurrentPage: () => Page | null;
 }
