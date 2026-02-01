@@ -2,14 +2,32 @@ import React, { useState } from 'react';
 import { useCaptureSession } from '../store/captureSession';
 
 export default function CapturedScreensList() {
-  const { capturedScreens } = useCaptureSession();
+  const { capturedScreens, clearCaptures } = useCaptureSession();
   const [selectedCapture, setSelectedCapture] = useState<typeof capturedScreens[0] | null>(null);
+
+  const handleClearAll = () => {
+    if (capturedScreens.length === 0) return;
+
+    if (confirm(`Clear all ${capturedScreens.length} captures? This cannot be undone.`)) {
+      clearCaptures();
+    }
+  };
 
   return (
     <div className="bg-gray-800 rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold">Captured Screens</h2>
-        <span className="text-xs text-gray-400">{capturedScreens.length} captures</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400">{capturedScreens.length} captures</span>
+          {capturedScreens.length > 0 && (
+            <button
+              onClick={handleClearAll}
+              className="text-xs px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-white transition-colors"
+            >
+              Clear All
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Captures grid */}

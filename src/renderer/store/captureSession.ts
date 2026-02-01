@@ -12,6 +12,9 @@ function setupIPCListeners(set: any) {
   if (window.electron.onCaptureUpdate) {
     window.electron.onCaptureUpdate((capture: Capture) => {
       console.log('📸 Received capture update:', capture);
+      console.log('📝 OCR rawText length:', capture.ocrResult?.rawText?.length || 0);
+      console.log('📝 OCR rawText preview:', capture.ocrResult?.rawText?.substring(0, 100) || 'NO TEXT');
+
       set((state: any) => ({
         capturedScreens: [...state.capturedScreens, capture],
         currentPreview: capture.screenshot,

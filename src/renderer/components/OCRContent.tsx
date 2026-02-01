@@ -2,18 +2,40 @@ import React from 'react';
 import { useCaptureSession } from '../store/captureSession';
 
 export default function OCRContent() {
-  const { ocrText, processingStatus } = useCaptureSession();
+  const { ocrText, processingStatus, isRecording, getCurrentPage, finalizeCurrentPage, startNewPage } = useCaptureSession();
+
+  const handleApprove = () => {
+    console.log('✅ Approve button clicked - finalizing current page and starting new one');
+    finalizeCurrentPage();
+    startNewPage();
+  };
+
+  const currentPage = getCurrentPage();
+  const hasContentToApprove = currentPage && currentPage.screenshots.length > 0;
 
   return (
     <div className="bg-gray-800 rounded-lg p-4 flex flex-col flex-1 overflow-hidden">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold">OCR Content</h2>
-        {processingStatus === 'processing' && (
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-            <span className="text-xs text-blue-400">Processing...</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {processingStatus === 'processing' && (
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+              <span className="text-xs text-blue-400">Processing...</span>
+            </div>
+          )}
+          {isRecording && hasContentToApprove && (
+            <button
+              onClick={handleApprove}
+              className="text-xs px-3 py-1 bg-green-600 hover:bg-green-700 rounded text-white transition-colors flex items-center gap-1"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              Approve & New Page
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Text area */}
