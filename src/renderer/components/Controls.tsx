@@ -84,11 +84,12 @@ export default function Controls() {
 
       {/* Instructions */}
       <div className="mt-4 p-3 bg-gray-700/50 rounded text-xs text-gray-400">
-        <p className="font-medium text-gray-300 mb-1">Phase 1 Demo:</p>
+        <p className="font-medium text-gray-300 mb-1">Phase 2: Screen Capture & OCR</p>
         <ul className="list-disc list-inside space-y-1">
-          <li>UI components are now functional</li>
-          <li>Window detection coming in Phase 2</li>
-          <li>Recording controls will work in Phase 2</li>
+          <li>Select a window from the dropdown</li>
+          <li>Click Start to capture screen changes</li>
+          <li>OCR extracts text automatically</li>
+          <li>Pause/Resume to control recording</li>
         </ul>
       </div>
     </div>

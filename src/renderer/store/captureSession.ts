@@ -1,80 +1,129 @@
 import { create } from 'zustand';
 import type { CaptureSessionStore, WindowInfo, Capture } from '@shared/types';
 
-export const useCaptureSession = create<CaptureSessionStore>((set, get) => ({
-  // Initial state
-  isRecording: false,
-  isPaused: false,
-  selectedWindow: null,
-  availableWindows: [],
-  capturedScreens: [],
-  currentPreview: null,
-  ocrText: '',
-  processingStatus: 'idle',
+// Setup IPC listeners
+function setupIPCListeners(set: any) {
+  // Listen for capture updates from main process
+  if (window.electron.onCaptureUpdate) {
+    window.electron.onCaptureUpdate((capture: Capture) => {
+      console.log('📸 Received capture update:', capture);
+      set((state: any) => ({
+        capturedScreens: [...state.capturedScreens, capture],
+        currentPreview: capture.screenshot,
+        ocrText: capture.ocrResult?.rawText || '',
+        processingStatus: 'idle',
+      }));
+    });
+  }
 
-  // Actions
-  loadWindows: async () => {
-    try {
-      const windows = await window.electron.getWindows();
-      set({ availableWindows: windows });
-    } catch (error) {
-      console.error('Failed to load windows:', error);
-    }
-  },
+  // Listen for recording state changes
+  if (window.electron.onRecordingStateChanged) {
+    window.electron.onRecordingStateChanged((stateChange: any) => {
+      console.log('🔄 Recording state changed:', stateChange);
+      set((state: any) => ({
+        isRecording: stateChange.state === 'recording' || stateChange.state === 'paused',
+        isPaused: stateChange.state === 'paused',
+        // Update capture count if provided
+        ...(stateChange.captureCount !== undefined && {
+          capturedScreens: state.capturedScreens.slice(0, stateChange.captureCount),
+        }),
+      }));
+    });
+  }
+}
 
-  selectWindow: (window: WindowInfo) => {
-    set({ selectedWindow: window });
-  },
+export const useCaptureSession = create<CaptureSessionStore>((set, get) => {
+  // Setup IPC listeners once
+  setupIPCListeners(set);
 
-  startRecording: async () => {
-    const { selectedWindow } = get();
-    if (!selectedWindow) {
-      console.error('No window selected');
-      return;
-    }
+  return {
+    // Initial state
+    isRecording: false,
+    isPaused: false,
+    selectedWindow: null,
+    availableWindows: [],
+    capturedScreens: [],
+    currentPreview: null,
+    ocrText: '',
+    processingStatus: 'idle',
 
-    try {
-      await window.electron.startRecording(selectedWindow.id);
-      set({ isRecording: true, isPaused: false, capturedScreens: [] });
-    } catch (error) {
-      console.error('Failed to start recording:', error);
-    }
-  },
+    // Actions
+    loadWindows: async () => {
+      try {
+        const windows = await window.electron.getWindows();
+        console.log('🪟 Detected windows:', windows);
+        set({ availableWindows: windows });
+      } catch (error) {
+        console.error('Failed to load windows:', error);
+      }
+    },
 
-  stopRecording: async () => {
-    try {
-      await window.electron.stopRecording();
-      set({ isRecording: false, isPaused: false, currentPreview: null });
-    } catch (error) {
-      console.error('Failed to stop recording:', error);
-    }
-  },
+    selectWindow: (window: WindowInfo) => {
+      set({ selectedWindow: window });
+    },
 
-  pauseRecording: () => {
-    set({ isPaused: true });
-    // Phase 2: Implement actual pause
-  },
+    startRecording: async () => {
+      const { selectedWindow } = get();
+      if (!selectedWindow) {
+        console.error('No window selected');
+        return;
+      }
 
-  resumeRecording: () => {
-    set({ isPaused: false });
-    // Phase 2: Implement actual resume
-  },
+      try {
+        console.log('▶️  Starting recording for window:', selectedWindow);
+        await window.electron.startRecording(selectedWindow.id, selectedWindow.bounds);
+        set({ isRecording: true, isPaused: false, capturedScreens: [], processingStatus: 'capturing' });
+      } catch (error) {
+        console.error('Failed to start recording:', error);
+      }
+    },
 
-  addCapture: (capture: Capture) => {
-    set((state) => ({
-      capturedScreens: [...state.capturedScreens, capture],
-    }));
-  },
+    stopRecording: async () => {
+      try {
+        console.log('⏹️  Stopping recording');
+        await window.electron.stopRecording();
+        set({ isRecording: false, isPaused: false, processingStatus: 'idle', currentPreview: null });
+      } catch (error) {
+        console.error('Failed to stop recording:', error);
+      }
+    },
 
-  updatePreview: (image: string) => {
-    set({ currentPreview: image });
-  },
+    pauseRecording: async () => {
+      try {
+        console.log('⏸️  Pausing recording');
+        await window.electron.pauseRecording();
+        set({ isPaused: true, processingStatus: 'paused' });
+      } catch (error) {
+        console.error('Failed to pause recording:', error);
+      }
+    },
 
-  updateOCRText: (text: string) => {
-    set({ ocrText: text });
-  },
+    resumeRecording: async () => {
+      try {
+        console.log('▶️  Resuming recording');
+        await window.electron.resumeRecording();
+        set({ isPaused: false, processingStatus: 'capturing' });
+      } catch (error) {
+        console.error('Failed to resume recording:', error);
+      }
+    },
 
-  clearCaptures: () => {
-    set({ capturedScreens: [], ocrText: '', currentPreview: null });
-  },
-}));
+    addCapture: (capture: Capture) => {
+      set((state) => ({
+        capturedScreens: [...state.capturedScreens, capture],
+      }));
+    },
+
+    updatePreview: (image: string) => {
+      set({ currentPreview: image });
+    },
+
+    updateOCRText: (text: string) => {
+      set({ ocrText: text });
+    },
+
+    clearCaptures: () => {
+      set({ capturedScreens: [], ocrText: '', currentPreview: null });
+    },
+  };
+});

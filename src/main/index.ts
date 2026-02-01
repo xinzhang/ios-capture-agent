@@ -1,6 +1,9 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import os from 'os';
+import { detectWindows, filterPhoneWindows } from './services/windowDetector.js';
+import { startRecording, stopRecording, pauseRecording, resumeRecording } from './services/screenCapture.js';
+import { processOCR } from './services/ocrProcessor.js';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -85,35 +88,76 @@ app.on('window-all-closed', () => {
 
 // IPC Handlers
 function registerIPCHandlers() {
-  // Get available windows (placeholder for Phase 2)
+  // Get available windows
   ipcMain.handle('get_windows', async () => {
-    // Phase 1: Return empty array
-    // Phase 2: Implement actual window detection
-    return [];
+    const allWindows = await detectWindows();
+    const phoneWindows = filterPhoneWindows(allWindows);
+    return phoneWindows;
   });
 
-  // Start recording (placeholder for Phase 2)
-  ipcMain.handle('start_recording', async (_event, windowId: number) => {
-    console.log('Starting recording for window:', windowId);
-    return { success: true };
+  // Start recording
+  ipcMain.handle('start_recording', async (_event, windowId: number, bounds: any) => {
+    console.log('Starting recording for window:', windowId, 'bounds:', bounds);
+    try {
+      await startRecording(windowId, bounds, mainWindow);
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      return { success: false, error: String(error) };
+    }
   });
 
-  // Stop recording (placeholder for Phase 2)
+  // Stop recording
   ipcMain.handle('stop_recording', async () => {
     console.log('Stopping recording');
-    return { success: true };
+    try {
+      await stopRecording();
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+      return { success: false, error: String(error) };
+    }
   });
 
-  // Process OCR (placeholder for Phase 2)
+  // Pause recording
+  ipcMain.handle('pause_recording', async () => {
+    console.log('Pausing recording');
+    try {
+      pauseRecording();
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to pause recording:', error);
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Resume recording
+  ipcMain.handle('resume_recording', async () => {
+    console.log('Resuming recording');
+    try {
+      resumeRecording();
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to resume recording:', error);
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Process OCR
   ipcMain.handle('process_ocr', async (_event, imageData: string) => {
-    // Phase 1: Return mock data
-    // Phase 2: Implement Tesseract.js OCR
-    return {
-      rawText: 'OCR will be implemented in Phase 2',
-      textBlocks: [],
-      confidence: 0,
-      processingTime: 0,
-    };
+    try {
+      const result = await processOCR(imageData);
+      return result;
+    } catch (error) {
+      console.error('OCR processing failed:', error);
+      return {
+        rawText: '',
+        textBlocks: [],
+        confidence: 0,
+        processingTime: 0,
+        error: String(error),
+      };
+    }
   });
 
   // Get app version
