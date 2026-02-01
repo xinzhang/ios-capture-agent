@@ -3,17 +3,35 @@ import { useCaptureSession } from '../store/captureSession';
 import type { Page } from '@shared/types';
 
 export default function PagesList() {
-  const { pages, currentPageId, selectedPageId, selectPage } = useCaptureSession();
+  const { pages, currentPageId, selectedPageId, selectPage, clearCaptures } = useCaptureSession();
+
+  const handleClearAll = () => {
+    if (pages.length === 0) return;
+
+    if (confirm(`Clear all ${pages.length} pages? This cannot be undone.`)) {
+      clearCaptures();
+    }
+  };
 
   return (
     <div className="bg-gray-800 rounded-lg p-4 mb-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold">Pages ({pages.length})</h3>
-        {pages.length > 0 && (
-          <div className="text-xs text-gray-400">
-            {pages.filter((p) => p.status === 'active').length} active
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {pages.length > 0 && (
+            <>
+              <div className="text-xs text-gray-400">
+                {pages.filter((p) => p.status === 'active').length} active
+              </div>
+              <button
+                onClick={handleClearAll}
+                className="text-xs px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-white transition-colors"
+              >
+                Clear All
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {pages.length === 0 ? (

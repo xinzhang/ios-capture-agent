@@ -105,7 +105,7 @@ function calculateSimilarity(img1: Buffer, img2: Buffer): number {
 }
 
 /**
- * Determine direction based on band similarities
+ * Determine direction based on band patterns
  */
 function determineDirection(
   similarities: RegionComparison,
@@ -113,20 +113,26 @@ function determineDirection(
 ): DirectionDetectionResult {
   const { top, middle, bottom } = similarities;
 
-  // Major change - completely different screen
-  if (overallSimilarity < 40) {
-    console.log('🔄 Major change detected - new screen');
+  console.log('📊 Analyzing band similarities:', { top, middle, bottom, overall: overallSimilarity });
+
+  // Major change - completely different screen (lowered threshold for better swipe detection)
+  if (overallSimilarity < 45) {
+    console.log('🔄 Major change detected - new screen/swipe');
     return { direction: 'major', confidence: 0.9 };
   }
 
-  // Horizontal swipe/new screen
-  if (overallSimilarity < 50) {
-    console.log('↔️ Horizontal navigation detected');
-    return { direction: 'horizontal', confidence: 0.8 };
+  // Check for horizontal swipe pattern:
+  // When swiping, all bands change similarly (uniform change across screen)
+  const bandVariance = Math.max(top, middle, bottom) - Math.min(top, middle, bottom);
+  const uniformChange = bandVariance < 20; // All bands changed by similar amount
+
+  if (uniformChange && overallSimilarity < 65) {
+    console.log('↔️ Horizontal swipe detected (uniform change across screen)');
+    return { direction: 'horizontal', confidence: 0.85 };
   }
 
   // Vertical scroll - check middle band stability
-  if (middle > 70) {
+  if (middle > 65) {
     // Middle band is stable, content shifted vertically
     const scrollDown = top > bottom; // Top changed more than bottom = scrolled down
     const scrollDirection: 'up' | 'down' = scrollDown ? 'down' : 'up';
@@ -143,6 +149,12 @@ function determineDirection(
   if (overallSimilarity > 85) {
     console.log('⏭️ Minor change, ignoring');
     return { direction: 'none', confidence: 0.95 };
+  }
+
+  // Default to major change for anything significant but not clearly vertical
+  if (overallSimilarity < 75) {
+    console.log('🔄 Significant change detected - likely new screen');
+    return { direction: 'major', confidence: 0.7 };
   }
 
   // Default to none for ambiguous cases

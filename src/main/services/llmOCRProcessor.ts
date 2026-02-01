@@ -46,11 +46,14 @@ export async function processOCR(imageData: string): Promise<OCRResult> {
 
   try {
     console.log('🔍 Starting GPT-4 Vision OCR...');
+    console.log('   API Key configured:', isConfigured());
 
     const client = getClient();
 
     // Remove data URL prefix if present
     const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '');
+
+    console.log('📤 Sending image to GPT-4 Vision API...');
 
     // Call GPT-4 Vision API
     const response = await client.chat.completions.create({
@@ -92,6 +95,7 @@ Return ONLY the extracted text, nothing else.`,
     console.log(`✅ GPT-4 Vision OCR completed in ${processingTime}ms`);
     console.log(`   Text length: ${extractedText.length} characters`);
     console.log(`   Tokens used: ${response.usage?.total_tokens || 'N/A'}`);
+    console.log(`   First 100 chars: ${extractedText.substring(0, 100)}...`);
 
     // Calculate confidence based on text length and model quality
     // GPT-4 Vision is very accurate, so we give high confidence
@@ -115,10 +119,13 @@ Return ONLY the extracted text, nothing else.`,
     };
   } catch (error: any) {
     console.error('❌ GPT-4 Vision OCR failed:', error.message);
+    console.error('   Full error:', error);
 
     // If API key is missing, provide helpful error
-    if (error.message?.includes('API key')) {
-      console.error('💡 Make sure OPENAI_API_KEY is set in your .env file');
+    if (error.message?.includes('API key') || error.message?.includes('401')) {
+      console.error('💡 ERROR: OPENAI_API_KEY is not set or is invalid!');
+      console.error('   Please add your API key to the .env file:');
+      console.error('   OPENAI_API_KEY=sk-your-key-here');
     }
 
     // Return empty result on error

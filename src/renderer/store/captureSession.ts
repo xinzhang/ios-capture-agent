@@ -159,7 +159,15 @@ export const useCaptureSession = create<CaptureSessionStore>((set, get) => {
     },
 
     clearCaptures: () => {
-      set({ capturedScreens: [], ocrText: '', currentPreview: null });
+      console.log('🗑️ Clearing all captures and pages');
+      set({
+        capturedScreens: [],
+        ocrText: '',
+        currentPreview: null,
+        pages: [],
+        currentPageId: null,
+        selectedPageId: null,
+      });
     },
 
     // Pages actions
