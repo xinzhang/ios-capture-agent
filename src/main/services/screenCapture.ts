@@ -171,7 +171,9 @@ async function captureAndProcess(mainWindow: BrowserWindow | null): Promise<void
       const base64Image = `data:image/png;base64,${currentBuffer.toString('base64')}`;
 
       // Process OCR
+      console.log('🔍 Starting OCR processing...');
       const ocrResult = await processOCR(base64Image);
+      console.log('✅ OCR completed, sending capture update to renderer...');
 
       // Send capture update to renderer
       sendCaptureUpdate(mainWindow, {
@@ -181,6 +183,7 @@ async function captureAndProcess(mainWindow: BrowserWindow | null): Promise<void
         screenshot: base64Image,
         ocrResult: ocrResult,
       });
+      console.log('✅ Capture update sent!');
     } else {
       console.log('⏭️  No significant change detected, skipping capture');
     }
@@ -206,10 +209,13 @@ function sendCaptureUpdate(
   capture: any
 ): void {
   if (!mainWindow || mainWindow.isDestroyed()) {
+    console.error('❌ Cannot send capture update: window is null or destroyed');
     return;
   }
 
+  console.log('📤 Sending capture-update event to renderer, capture ID:', capture.id);
   mainWindow.webContents.send('capture-update', capture);
+  console.log('✅ capture-update event sent successfully');
 }
 
 /**

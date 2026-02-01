@@ -8,7 +8,8 @@ contextBridge.exposeInMainWorld('electron', {
   getWindows: () => ipcRenderer.invoke('get_windows'),
 
   // Recording controls
-  startRecording: (windowId: number) => ipcRenderer.invoke('start_recording', windowId),
+  startRecording: (windowId: number, bounds: any, isDisplay: boolean) =>
+    ipcRenderer.invoke('start_recording', windowId, bounds, isDisplay),
   stopRecording: () => ipcRenderer.invoke('stop_recording'),
   pauseRecording: () => ipcRenderer.invoke('pause_recording'),
   resumeRecording: () => ipcRenderer.invoke('resume_recording'),
@@ -43,7 +44,7 @@ declare global {
   interface Window {
     electron: {
       getWindows: () => Promise<WindowInfo[]>;
-      startRecording: (windowId: number) => Promise<{ success: boolean }>;
+      startRecording: (windowId: number, bounds: any, isDisplay: boolean) => Promise<{ success: boolean }>;
       stopRecording: () => Promise<{ success: boolean }>;
       pauseRecording: () => Promise<void>;
       resumeRecording: () => Promise<void>;

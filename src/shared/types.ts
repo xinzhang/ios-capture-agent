@@ -14,10 +14,11 @@ export interface WindowInfo {
 }
 
 export interface Capture {
-  id: string;
-  timestamp: number;
+  id: string | number;
+  windowId: number;
+  timestamp: string; // ISO string
   screenshot: string; // base64 or data URL
-  ocrText: string;
+  ocrResult?: OCRResult;
   processedContent?: ProcessedContent;
 }
 
