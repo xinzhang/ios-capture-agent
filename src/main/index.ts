@@ -185,14 +185,33 @@ function registerIPCHandlers() {
 
   // Capture specific region for preview
   ipcMain.handle('capture_region', async (_event, region: any) => {
+    console.log('🎯 capture_region IPC called with:', region);
     try {
       const screenshot = await import('screenshot-desktop');
       const sharp = await import('sharp');
 
+      console.log('📸 Taking full screenshot...');
       const img = await screenshot.default();
+      console.log('📸 Full screenshot taken, size:', img.length);
+
+      const metadata = await sharp.default(img).metadata();
+      console.log('📸 Image metadata:', { width: metadata.width, height: metadata.height });
+
+      // Validate region bounds
+      if (region.x < 0 || region.y < 0 || region.width <= 0 || region.height <= 0) {
+        throw new Error(`Invalid region dimensions: ${JSON.stringify(region)}`);
+      }
+      if (region.x + region.width > (metadata.width || 1920) ||
+          region.y + region.height > (metadata.height || 1080)) {
+        console.warn('⚠️ Region exceeds image bounds, clamping...');
+        region.width = Math.min(region.width, (metadata.width || 1920) - region.x);
+        region.height = Math.min(region.height, (metadata.height || 1080) - region.y);
+      }
+
       const image = sharp.default(img);
 
       // Crop to the selected region
+      console.log('✂️ Cropping to region:', region);
       const cropped = await image.extract({
         left: region.x,
         top: region.y,
@@ -200,7 +219,10 @@ function registerIPCHandlers() {
         height: region.height,
       }).png().toBuffer();
 
-      return `data:image/png;base64,${cropped.toString('base64')}`;
+      console.log('✅ Crop complete, size:', cropped.length);
+      const result = `data:image/png;base64,${cropped.toString('base64')}`;
+      console.log('✅ Returning base64 image, length:', result.length);
+      return result;
     } catch (error) {
       console.error('Failed to capture region:', error);
       throw error;

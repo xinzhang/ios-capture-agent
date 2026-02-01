@@ -115,7 +115,9 @@ export const useCaptureSession = create<CaptureSessionStore>((set, get) => {
     },
 
     updatePreview: (image: string) => {
+      console.log('🖼️ updatePreview called, image length:', image.length);
       set({ currentPreview: image });
+      console.log('🖼️ currentPreview set in store');
     },
 
     updateOCRText: (text: string) => {

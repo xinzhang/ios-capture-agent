@@ -39,7 +39,9 @@ export default function Controls() {
   // Take a full screenshot for region selection
   const captureFullScreenshot = async () => {
     try {
+      console.log('📸 captureFullScreen called');
       const screenshot = await window.electron.captureFullScreen?.();
+      console.log('📸 captureFullScreen result:', screenshot ? 'Got screenshot' : 'No screenshot');
       if (screenshot) {
         setFullScreenImage(screenshot);
         setShowRegionSelector(true);
@@ -136,10 +138,21 @@ export default function Controls() {
         <RegionSelectorModal
           image={fullScreenImage}
           onSave={async (region) => {
+            console.log('🎯 onSave called with region:', region);
+
+            // Round to integers for sharp
+            const roundedRegion = {
+              x: Math.round(region.x),
+              y: Math.round(region.y),
+              width: Math.round(region.width),
+              height: Math.round(region.height),
+            };
+            console.log('🎯 Rounded region:', roundedRegion);
+
             if (selectedWindow) {
               selectWindow({
                 ...selectedWindow,
-                bounds: region,
+                bounds: roundedRegion,
                 isDisplay: false,
               });
             }
@@ -148,9 +161,15 @@ export default function Controls() {
 
             // Take a preview screenshot of the selected region
             try {
-              const screenshot = await window.electron.captureRegion?.(region);
+              console.log('📸 Calling captureRegion with:', roundedRegion);
+              const screenshot = await window.electron.captureRegion?.(roundedRegion);
+              console.log('📸 captureRegion result:', screenshot ? `Got screenshot (${screenshot.length} chars)` : 'No screenshot');
               if (screenshot && updatePreview) {
+                console.log('🖼️ Updating preview...');
                 updatePreview(screenshot);
+                console.log('🖼️ Preview updated');
+              } else {
+                console.log('❌ No screenshot or updatePreview:', { hasScreenshot: !!screenshot, hasUpdatePreview: !!updatePreview });
               }
             } catch (error) {
               console.error('Failed to capture preview:', error);
@@ -196,7 +215,72 @@ function RegionSelectorModal({
   const [isDragging, setIsDragging] = useState(false);
   const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(null);
   const [currentPos, setCurrentPos] = useState<{ x: number; y: number } | null>(null);
+  const [imageScale, setImageScale] = useState(1);
+  const [imageReady, setImageReady] = useState(false);
   const imgRef = React.useRef<HTMLImageElement>(null);
+
+  // Load image in memory to get dimensions
+  React.useEffect(() => {
+    setImageReady(false);
+    setImageScale(1);
+    setSelection(null);
+
+    // Create a new image to load and get dimensions
+    const tempImg = new Image();
+    tempImg.onload = () => {
+      console.log('🖼️ Image loaded in memory, dimensions:', tempImg.width, 'x', tempImg.height);
+
+      // Now wait for the DOM image to render and get its displayed size
+      setTimeout(() => {
+        const domImg = imgRef.current;
+        if (domImg && domImg.clientWidth > 0 && domImg.clientHeight > 0) {
+          const displayedWidth = domImg.clientWidth;
+          const displayedHeight = domImg.clientHeight;
+          const naturalWidth = tempImg.width;
+          const naturalHeight = tempImg.height;
+
+          const scaleX = naturalWidth / displayedWidth;
+          const scaleY = naturalHeight / displayedHeight;
+          const scale = Math.max(scaleX, scaleY);
+          setImageScale(scale);
+          setImageReady(true);
+          console.log('📐 Image scale calculated:', {
+            displayed: `${displayedWidth}x${displayedHeight}`,
+            natural: `${naturalWidth}x${naturalHeight}`,
+            scaleX, scaleY, finalScale: scale
+          });
+        } else {
+          // Retry if DOM isn't ready
+          setTimeout(() => {
+            const domImg = imgRef.current;
+            if (domImg) {
+              const displayedWidth = domImg.clientWidth || 722;
+              const displayedHeight = domImg.clientHeight || 469;
+              const naturalWidth = tempImg.width;
+              const naturalHeight = tempImg.height;
+
+              const scaleX = naturalWidth / displayedWidth;
+              const scaleY = naturalHeight / displayedHeight;
+              const scale = Math.max(scaleX, scaleY);
+              setImageScale(scale);
+              setImageReady(true);
+              console.log('📐 Image scale calculated (retry):', {
+                displayed: `${displayedWidth}x${displayedHeight}`,
+                natural: `${naturalWidth}x${naturalHeight}`,
+                scaleX, scaleY, finalScale: scale
+              });
+            }
+          }, 100);
+        }
+      }, 100);
+    };
+
+    tempImg.onerror = () => {
+      console.error('❌ Failed to load image in memory');
+    };
+
+    tempImg.src = image;
+  }, [image]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -293,6 +377,7 @@ function RegionSelectorModal({
           style={{ userSelect: 'none' }}
         >
           <img
+            ref={imgRef}
             src={image}
             alt="Full screen for selection"
             className="max-w-full max-h-[70vh] rounded pointer-events-none"
@@ -335,11 +420,23 @@ function RegionSelectorModal({
             Cancel
           </button>
           <button
-            onClick={() => selection && onSave(selection)}
-            disabled={!selection || selection.width < 10 || selection.height < 10}
+            onClick={() => {
+              if (selection) {
+                // Scale the coordinates to match the actual screen
+                const scaledRegion = {
+                  x: Math.round(selection.x * imageScale),
+                  y: Math.round(selection.y * imageScale),
+                  width: Math.round(selection.width * imageScale),
+                  height: Math.round(selection.height * imageScale),
+                };
+                console.log('📐 Applying scale factor:', imageScale, 'scaled region:', scaledRegion);
+                onSave(scaledRegion);
+              }
+            }}
+            disabled={!imageReady || !selection || selection.width < 10 || selection.height < 10}
             className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-white disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Use This Region
+            {imageReady ? 'Use This Region' : 'Loading image...'}
           </button>
         </div>
       </div>
