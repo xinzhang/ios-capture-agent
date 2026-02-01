@@ -12,16 +12,32 @@ export default function Controls() {
     stopRecording,
     pauseRecording,
     resumeRecording,
-    updatePreview,
   } = useCaptureSession();
 
   const [showRegionSelector, setShowRegionSelector] = useState(false);
   const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
 
+  // Auto-screenshot when iPhone Mirroring is selected
+  useEffect(() => {
+    if (selectedWindow && selectedWindow.appName === 'iPhone Mirroring (Full Screen)' && !isRecording) {
+      // Only auto-show if we haven't set custom bounds yet
+      // Check if bounds are the default full screen
+      const isDefaultBounds = selectedWindow.bounds.x === 0 &&
+                              selectedWindow.bounds.y === 0 &&
+                              selectedWindow.bounds.width >= 1900;
+
+      if (isDefaultBounds) {
+        // Delay slightly to let the UI update first
+        setTimeout(() => {
+          captureFullScreenshot();
+        }, 300);
+      }
+    }
+  }, [selectedWindow, isRecording]);
+
   // Take a full screenshot for region selection
   const captureFullScreenshot = async () => {
     try {
-      // Request screenshot from main process
       const screenshot = await window.electron.captureFullScreen?.();
       if (screenshot) {
         setFullScreenImage(screenshot);
@@ -65,7 +81,7 @@ export default function Controls() {
                   : 'bg-gray-700 text-gray-500 cursor-not-allowed'
               }`}
             >
-              Select Region
+              Change Region
             </button>
           </>
         ) : (
@@ -141,9 +157,9 @@ export default function Controls() {
         <p className="font-medium text-gray-300 mb-1">How to use:</p>
         <ol className="list-decimal list-inside space-y-1">
           <li>Select "iPhone Mirroring (Full Screen)"</li>
-          <li>Click "Select Region" to visually select the iPhone window</li>
-          <li>Click and drag to draw a box around the iPhone window</li>
+          <li>Draw a box around the iPhone window (opens automatically)</li>
           <li>Click "Start Recording"</li>
+          <li>Use "Change Region" button anytime to reselect</li>
         </ol>
       </div>
     </div>
