@@ -13,7 +13,10 @@
     "electron:dev:watch": "concurrently \"npm run dev:watch\" \"cross-env NODE_ENV=development electron .\"",
     "dev:watch": "vite",
     "electron:build": "npm run build && electron-builder",
-    "lint": "eslint src --ext .ts,.tsx"
+    "lint": "eslint src --ext .ts,.tsx",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:ui": "vitest --ui"
   },
   "dependencies": {
     "better-sqlite3": "^9.2.2",
@@ -28,6 +31,9 @@
     "zustand": "^4.4.7"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/better-sqlite3": "^7.6.8",
     "@types/react": "^18.2.47",
     "@types/react-dom": "^18.2.18",
@@ -43,6 +49,7 @@
     "eslint": "^8.56.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
+    "jsdom": "^27.4.0",
     "postcss": "^8.4.32",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.3.3",
