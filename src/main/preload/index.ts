@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('electron', {
   // App info
   getAppInfo: () => ipcRenderer.invoke('get_app_info'),
   captureFullScreen: () => ipcRenderer.invoke('capture_full_screen'),
+  captureRegion: (region: any) => ipcRenderer.invoke('capture_region', region),
 
   // Event listeners for renderer
   onCaptureUpdate: (callback: (capture: Capture) => void) => {
@@ -52,6 +53,7 @@ declare global {
       processOCR: (imageData: string) => Promise<OCRResult>;
       getAppInfo: () => Promise<any>;
       captureFullScreen: () => Promise<string>;
+      captureRegion: (region: any) => Promise<string>;
       onCaptureUpdate: (callback: (capture: Capture) => void) => void;
       onOCRComplete: (callback: (result: OCRResult) => void) => void;
       onRecordingStateChanged: (callback: (state: string) => void) => void;

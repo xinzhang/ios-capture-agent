@@ -182,4 +182,28 @@ function registerIPCHandlers() {
       throw error;
     }
   });
+
+  // Capture specific region for preview
+  ipcMain.handle('capture_region', async (_event, region: any) => {
+    try {
+      const screenshot = await import('screenshot-desktop');
+      const sharp = await import('sharp');
+
+      const img = await screenshot.default();
+      const image = sharp.default(img);
+
+      // Crop to the selected region
+      const cropped = await image.extract({
+        left: region.x,
+        top: region.y,
+        width: region.width,
+        height: region.height,
+      }).png().toBuffer();
+
+      return `data:image/png;base64,${cropped.toString('base64')}`;
+    } catch (error) {
+      console.error('Failed to capture region:', error);
+      throw error;
+    }
+  });
 }

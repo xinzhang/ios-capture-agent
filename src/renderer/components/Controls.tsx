@@ -12,6 +12,7 @@ export default function Controls() {
     stopRecording,
     pauseRecording,
     resumeRecording,
+    updatePreview,
   } = useCaptureSession();
 
   const [showRegionSelector, setShowRegionSelector] = useState(false);
@@ -134,7 +135,7 @@ export default function Controls() {
       {showRegionSelector && fullScreenImage && (
         <RegionSelectorModal
           image={fullScreenImage}
-          onSave={(region) => {
+          onSave={async (region) => {
             if (selectedWindow) {
               selectWindow({
                 ...selectedWindow,
@@ -144,6 +145,16 @@ export default function Controls() {
             }
             setShowRegionSelector(false);
             setFullScreenImage(null);
+
+            // Take a preview screenshot of the selected region
+            try {
+              const screenshot = await window.electron.captureRegion?.(region);
+              if (screenshot && updatePreview) {
+                updatePreview(screenshot);
+              }
+            } catch (error) {
+              console.error('Failed to capture preview:', error);
+            }
           }}
           onClose={() => {
             setShowRegionSelector(false);
@@ -184,22 +195,29 @@ function RegionSelectorModal({
   } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(null);
+  const [currentPos, setCurrentPos] = useState<{ x: number; y: number } | null>(null);
+  const imgRef = React.useRef<HTMLImageElement>(null);
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     setStartPos({ x, y });
+    setCurrentPos({ x, y });
     setIsDragging(true);
     setSelection({ x, y, width: 0, height: 0 });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isDragging || !startPos) return;
+    e.preventDefault();
 
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+
+    setCurrentPos({ x, y });
 
     setSelection({
       x: Math.min(startPos.x, x),
@@ -211,7 +229,45 @@ function RegionSelectorModal({
 
   const handleMouseUp = () => {
     setIsDragging(false);
+    setCurrentPos(null);
   };
+
+  // Global mouse up to handle dragging outside the element
+  React.useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      if (isDragging) {
+        setIsDragging(false);
+        setCurrentPos(null);
+      }
+    };
+
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (isDragging && startPos && imgRef.current) {
+        const rect = imgRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        setCurrentPos({ x, y });
+
+        setSelection({
+          x: Math.min(startPos.x, x),
+          y: Math.min(startPos.y, y),
+          width: Math.abs(x - startPos.x),
+          height: Math.abs(y - startPos.y),
+        });
+      }
+    };
+
+    if (isDragging) {
+      window.addEventListener('mouseup', handleGlobalMouseUp);
+      window.addEventListener('mousemove', handleGlobalMouseMove);
+
+      return () => {
+        window.removeEventListener('mouseup', handleGlobalMouseUp);
+        window.removeEventListener('mousemove', handleGlobalMouseMove);
+      };
+    }
+  }, [isDragging, startPos]);
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-8">
@@ -231,16 +287,17 @@ function RegionSelectorModal({
         </div>
 
         <div
-          className="relative inline-block cursor-crosshair"
+          ref={imgRef}
+          className="relative inline-block cursor-crosshair select-none"
           onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
+          style={{ userSelect: 'none' }}
         >
           <img
             src={image}
             alt="Full screen for selection"
-            className="max-w-full max-h-[70vh] rounded"
+            className="max-w-full max-h-[70vh] rounded pointer-events-none"
+            draggable={false}
+            style={{ WebkitUserDrag: 'none' }}
           />
 
           {/* Selection Box */}
