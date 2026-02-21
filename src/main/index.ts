@@ -3,7 +3,7 @@ import path from 'path';
 import os from 'os';
 import { detectWindows, filterPhoneWindows } from './services/windowDetector.js';
 import { startRecording, stopRecording, pauseRecording, resumeRecording } from './services/screenCapture.js';
-import { processOCR } from './services/ocrProcessor.js';
+import { ocrProvider } from './services/ocr/index.js';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -146,7 +146,7 @@ function registerIPCHandlers() {
   // Process OCR
   ipcMain.handle('process_ocr', async (_event, imageData: string) => {
     try {
-      const result = await processOCR(imageData);
+      const result = await ocrProvider.processOCR(imageData);
       return result;
     } catch (error) {
       console.error('OCR processing failed:', error);

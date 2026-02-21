@@ -12,15 +12,19 @@ function setupIPCListeners(set: any) {
   if (window.electron.onCaptureUpdate) {
     window.electron.onCaptureUpdate((capture: Capture) => {
       console.log('📸 Received capture update:', capture);
-      console.log('📝 OCR rawText length:', capture.ocrResult?.rawText?.length || 0);
-      console.log('📝 OCR rawText preview:', capture.ocrResult?.rawText?.substring(0, 100) || 'NO TEXT');
+      const rawText = capture.ocrResult?.rawText || '';
+      console.log('📝 OCR rawText length:', rawText.length);
+      console.log('📝 OCR rawText preview:', rawText.substring(0, 100) || 'NO TEXT');
+      console.log('📝 Setting ocrText in store with length:', rawText.length);
 
       set((state: any) => ({
         capturedScreens: [...state.capturedScreens, capture],
         currentPreview: capture.screenshot,
-        ocrText: capture.ocrResult?.rawText || '',
+        ocrText: rawText,
         processingStatus: 'idle',
       }));
+
+      console.log('✅ Store updated, new ocrText length:', useCaptureSession.getState().ocrText.length);
     });
   }
 

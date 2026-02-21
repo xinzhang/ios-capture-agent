@@ -2,7 +2,7 @@ import screenshot from 'screenshot-desktop';
 import sharp from 'sharp';
 import { BrowserWindow } from 'electron';
 import { detectChange } from './changeDetection.js';
-import { processOCR } from './llmOCRProcessor.js';
+import { ocrProvider } from './ocr/index.js';
 import { detectChangeDirection } from './changeDirectionDetector.js';
 
 export interface Bounds {
@@ -132,7 +132,8 @@ export function resumeRecording(): void {
  * Capture screen and process for changes
  */
 async function captureAndProcess(mainWindow: BrowserWindow | null): Promise<void> {
-  if (!state.bounds) {
+  // Check if still recording
+  if (!state.isRecording || !state.bounds) {
     return;
   }
 
@@ -145,6 +146,12 @@ async function captureAndProcess(mainWindow: BrowserWindow | null): Promise<void
       format: 'png',
     });
 
+    // Check again after async screenshot - might have stopped during capture
+    if (!state.isRecording) {
+      console.log('⏹️  Recording stopped, skipping processing');
+      return;
+    }
+
     let currentBuffer: Buffer;
 
     if (state.isDisplay) {
@@ -154,6 +161,10 @@ async function captureAndProcess(mainWindow: BrowserWindow | null): Promise<void
     } else {
       // For window capture, extract the specific region
       console.log('🪟 Capturing window region');
+      if (!state.bounds) {
+        console.warn('⚠️  Bounds is null, skipping capture');
+        return;
+      }
       const image = sharp(img);
       const { x, y, width, height } = state.bounds;
       currentBuffer = await image.extract({
@@ -168,16 +179,44 @@ async function captureAndProcess(mainWindow: BrowserWindow | null): Promise<void
     if (state.firstCapture || !state.lastImageBuffer) {
       console.log('📸 First capture, initializing...');
 
+      // Check before OCR - it takes time and user might stop
+      if (!state.isRecording) {
+        console.log('⏹️  Recording stopped before OCR, skipping');
+        return;
+      }
+
       state.lastImageBuffer = currentBuffer;
       state.captureCount++;
-      state.firstCapture = false;
 
       const base64Image = `data:image/png;base64,${currentBuffer.toString('base64')}`;
 
+      // DEBUG: Save first captured image to disk for testing
+      if (state.firstCapture) {
+        const fs = require('fs');
+        const debugPath = '/tmp/ios-capture-first-screenshot.png';
+        fs.writeFileSync(debugPath, currentBuffer);
+        console.log('💾 Saved first capture to:', debugPath);
+        console.log('   You can test it manually with the OCR providers');
+      }
+
+      state.firstCapture = false;
+
       // Process OCR for first capture
       console.log('🔍 Starting OCR processing...');
-      const ocrResult = await processOCR(base64Image);
+      const ocrResult = await ocrProvider.processOCR(base64Image);
+
+      // Check if recording stopped during OCR
+      if (!state.isRecording) {
+        console.log('⏹️  Recording stopped during OCR, discarding results');
+        return;
+      }
+
       console.log('✅ OCR completed');
+      console.log('📝 OCR Result details:');
+      console.log('   rawText length:', ocrResult.rawText?.length || 0);
+      console.log('   rawText preview:', ocrResult.rawText?.substring(0, 100) || 'NO TEXT');
+      console.log('   confidence:', ocrResult.confidence);
+      console.log('   textBlocks:', ocrResult.textBlocks?.length || 0);
 
       // Send screenshot to page
       sendPageScreenshot(mainWindow, {
@@ -227,8 +266,20 @@ async function captureAndProcess(mainWindow: BrowserWindow | null): Promise<void
 
       // Process OCR for new screen
       console.log('🔍 Starting OCR processing...');
-      const ocrResult = await processOCR(base64Image);
+      const ocrResult = await ocrProvider.processOCR(base64Image);
+
+      // Check if recording stopped during OCR
+      if (!state.isRecording) {
+        console.log('⏹️  Recording stopped during OCR, discarding results');
+        return;
+      }
+
       console.log('✅ OCR completed');
+      console.log('📝 OCR Result details:');
+      console.log('   rawText length:', ocrResult.rawText?.length || 0);
+      console.log('   rawText preview:', ocrResult.rawText?.substring(0, 100) || 'NO TEXT');
+      console.log('   confidence:', ocrResult.confidence);
+      console.log('   textBlocks:', ocrResult.textBlocks?.length || 0);
 
       // Add screenshot to new page
       sendPageScreenshot(mainWindow, {
@@ -253,12 +304,26 @@ async function captureAndProcess(mainWindow: BrowserWindow | null): Promise<void
     if (directionResult.direction === 'vertical') {
       console.log('↕️ Vertical scroll detected, direction:', directionResult.scrollDirection);
 
+      let ocrResult: any = undefined;
+
       if (directionResult.scrollDirection === 'down') {
         // Scroll down - capture + OCR
         console.log('⬇️  Scrolled DOWN - capturing with OCR');
 
-        const ocrResult = await processOCR(base64Image);
+        ocrResult = await ocrProvider.processOCR(base64Image);
+
+        // Check if recording stopped during OCR
+        if (!state.isRecording) {
+          console.log('⏹️  Recording stopped during OCR, discarding results');
+          return;
+        }
+
         console.log('✅ OCR completed');
+        console.log('📝 OCR Result details:');
+        console.log('   rawText length:', ocrResult.rawText?.length || 0);
+        console.log('   rawText preview:', ocrResult.rawText?.substring(0, 100) || 'NO TEXT');
+        console.log('   confidence:', ocrResult.confidence);
+        console.log('   textBlocks:', ocrResult.textBlocks?.length || 0);
 
         sendPageScreenshot(mainWindow, {
           id: `shot-${Date.now()}`,
@@ -284,7 +349,7 @@ async function captureAndProcess(mainWindow: BrowserWindow | null): Promise<void
         windowId: state.windowId || 0,
         timestamp: new Date().toISOString(),
         screenshot: base64Image,
-        ocrResult: directionResult.scrollDirection === 'down' ? await processOCR(base64Image) : undefined,
+        ocrResult: ocrResult,
       });
       return;
     }
@@ -292,7 +357,14 @@ async function captureAndProcess(mainWindow: BrowserWindow | null): Promise<void
     // Default: treat as regular change with OCR
     console.log('✅ Regular change detected, processing with OCR');
 
-    const ocrResult = await processOCR(base64Image);
+    const ocrResult = await ocrProvider.processOCR(base64Image);
+
+    // Check if recording stopped during OCR
+    if (!state.isRecording) {
+      console.log('⏹️  Recording stopped during OCR, discarding results');
+      return;
+    }
+
     console.log('✅ OCR completed');
 
     sendPageScreenshot(mainWindow, {
@@ -337,6 +409,10 @@ function sendCaptureUpdate(
   }
 
   console.log('📤 Sending capture-update event to renderer, capture ID:', capture.id);
+  console.log('   Has ocrResult:', !!capture.ocrResult);
+  console.log('   OCR rawText length:', capture.ocrResult?.rawText?.length || 0);
+  console.log('   OCR rawText preview:', capture.ocrResult?.rawText?.substring(0, 50) || 'NO TEXT');
+
   mainWindow.webContents.send('capture-update', capture);
   console.log('✅ capture-update event sent successfully');
 }

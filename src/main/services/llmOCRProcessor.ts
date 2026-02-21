@@ -30,8 +30,21 @@ function getClient(): OpenAI {
     if (!apiKey) {
       throw new Error('OPENAI_API_KEY environment variable is not set');
     }
-    openaiClient = new OpenAI({ apiKey });
-    console.log('✅ OpenAI client initialized');
+
+    console.log('🔧 Initializing OpenAI client for Electron environment...');
+
+    // Create a custom HTTPS agent for Electron to work around networking issues
+    const { httpsAgent } = require('./electronAgent');
+
+    const clientConfig: any = {
+      apiKey,
+      timeout: 60000, // 60 second timeout
+      maxRetries: 2,
+      httpAgent: httpsAgent,
+    };
+
+    openaiClient = new OpenAI(clientConfig);
+    console.log('✅ OpenAI client initialized successfully');
   }
   return openaiClient;
 }
@@ -43,28 +56,34 @@ function getClient(): OpenAI {
  */
 export async function processOCR(imageData: string): Promise<OCRResult> {
   const startTime = Date.now();
+  const maxRetries = 2;
+  let attempt = 0;
 
-  try {
-    console.log('🔍 Starting GPT-4 Vision OCR...');
-    console.log('   API Key configured:', isConfigured());
+  while (attempt < maxRetries) {
+    try {
+      console.log(`🔍 Starting GPT-4 Vision OCR... (attempt ${attempt + 1}/${maxRetries})`);
+      console.log('   API Key configured:', isConfigured());
 
-    const client = getClient();
+      const client = getClient();
 
-    // Remove data URL prefix if present
-    const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '');
+      // Remove data URL prefix if present
+      const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '');
 
-    console.log('📤 Sending image to GPT-4 Vision API...');
+      console.log('📤 Sending image to GPT-4 Vision API...');
 
-    // Call GPT-4 Vision API
-    const response = await client.chat.completions.create({
-      model: 'gpt-4o', // GPT-4 Vision is most capable
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: `Please extract ALL text from this iOS screenshot.
+      // Call GPT-4 Vision API with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o', // GPT-4 Vision is most capable
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: `Please extract ALL text from this iOS screenshot.
 
 Rules:
 1. Extract every single word you can see
@@ -75,67 +94,101 @@ Rules:
 6. Don't summarize or paraphrase - get the exact text
 
 Return ONLY the extracted text, nothing else.`,
-            },
-            {
-              type: 'image_url',
-              image_url: {
-                url: `data:image/png;base64,${base64Data}`,
-                detail: 'high', // Use high detail for better OCR
               },
-            },
-          ],
-        },
-      ],
-      max_tokens: 4000,
-    });
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/png;base64,${base64Data}`,
+                  detail: 'high', // Use high detail for better OCR
+                },
+              },
+            ],
+          },
+        ],
+        max_tokens: 4000,
+      }, {
+        signal: controller.signal as any,
+      });
 
-    const extractedText = response.choices[0]?.message?.content || '';
-    const processingTime = Date.now() - startTime;
+      clearTimeout(timeoutId);
 
-    console.log(`✅ GPT-4 Vision OCR completed in ${processingTime}ms`);
-    console.log(`   Text length: ${extractedText.length} characters`);
-    console.log(`   Tokens used: ${response.usage?.total_tokens || 'N/A'}`);
-    console.log(`   First 100 chars: ${extractedText.substring(0, 100)}...`);
+      const extractedText = response.choices[0]?.message?.content || '';
+      const processingTime = Date.now() - startTime;
 
-    // Calculate confidence based on text length and model quality
-    // GPT-4 Vision is very accurate, so we give high confidence
-    const confidence = extractedText.length > 0 ? 95 : 0;
+      console.log(`✅ GPT-4 Vision OCR completed in ${processingTime}ms`);
+      console.log(`   Text length: ${extractedText.length} characters`);
+      console.log(`   Tokens used: ${response.usage?.total_tokens || 'N/A'}`);
+      console.log(`   First 100 chars: ${extractedText.substring(0, 100)}...`);
 
-    // Create a simple text block (GPT-4 doesn't give us bounding boxes like Tesseract)
-    const textBlocks: TextBlock[] = extractedText
-      .split('\n')
-      .filter((line) => line.trim().length > 0)
-      .map((line) => ({
-        text: line.trim(),
-        bbox: { x0: 0, y0: 0, x1: 100, y1: 10 }, // Dummy bbox since GPT-4 doesn't provide this
-        confidence: 95,
-      }));
+      // Calculate confidence based on text length and model quality
+      // GPT-4 Vision is very accurate, so we give high confidence
+      const confidence = extractedText.length > 0 ? 95 : 0;
 
-    return {
-      rawText: extractedText,
-      textBlocks: textBlocks,
-      confidence: confidence,
-      processingTime: processingTime,
-    };
-  } catch (error: any) {
-    console.error('❌ GPT-4 Vision OCR failed:', error.message);
-    console.error('   Full error:', error);
+      // Create a simple text block (GPT-4 doesn't give us bounding boxes like Tesseract)
+      const textBlocks: TextBlock[] = extractedText
+        .split('\n')
+        .filter((line) => line.trim().length > 0)
+        .map((line) => ({
+          text: line.trim(),
+          bbox: { x0: 0, y0: 0, x1: 100, y1: 10 }, // Dummy bbox since GPT-4 doesn't provide this
+          confidence: 95,
+        }));
 
-    // If API key is missing, provide helpful error
-    if (error.message?.includes('API key') || error.message?.includes('401')) {
-      console.error('💡 ERROR: OPENAI_API_KEY is not set or is invalid!');
-      console.error('   Please add your API key to the .env file:');
-      console.error('   OPENAI_API_KEY=sk-your-key-here');
+      return {
+        rawText: extractedText,
+        textBlocks: textBlocks,
+        confidence: confidence,
+        processingTime: processingTime,
+      };
+    } catch (error: any) {
+      attempt++;
+      console.error(`❌ GPT-4 Vision OCR failed (attempt ${attempt}/${maxRetries}):`, error.message);
+
+      // Check if this is a connection error that might be retriable
+      const isRetriable =
+        error.message?.includes('EPIPE') ||
+        error.message?.includes('ECONNRESET') ||
+        error.message?.includes('timeout') ||
+        error.message?.includes('fetch') ||
+        error.code === 'EPIPE' ||
+        error.code === 'ECONNRESET';
+
+      // If API key is missing, don't retry
+      if (error.message?.includes('API key') || error.message?.includes('401')) {
+        console.error('💡 ERROR: OPENAI_API_KEY is not set or is invalid!');
+        console.error('   Please add your API key to the .env file:');
+        console.error('   OPENAI_API_KEY=sk-your-key-here');
+        break;
+      }
+
+      // If it's retriable and we haven't exhausted retries, wait and retry
+      if (isRetriable && attempt < maxRetries) {
+        const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s
+        console.log(`⏳ Retrying in ${waitTime}ms...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+
+      // If we get here, we've exhausted retries or it's not retriable
+      console.error('   Full error:', error);
+
+      // Return empty result on error
+      return {
+        rawText: '',
+        textBlocks: [],
+        confidence: 0,
+        processingTime: Date.now() - startTime,
+      };
     }
-
-    // Return empty result on error
-    return {
-      rawText: '',
-      textBlocks: [],
-      confidence: 0,
-      processingTime: Date.now() - startTime,
-    };
   }
+
+  // Shouldn't reach here, but TypeScript needs it
+  return {
+    rawText: '',
+    textBlocks: [],
+    confidence: 0,
+    processingTime: Date.now() - startTime,
+  };
 }
 
 /**

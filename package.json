@@ -16,9 +16,12 @@
     "lint": "eslint src --ext .ts,.tsx",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "test:api": "node test-api-key.js",
+    "test:ocr": "node test-ocr.js"
   },
   "dependencies": {
+    "agentkeepalive": "^4.6.0",
     "better-sqlite3": "^9.2.2",
     "dotenv": "^16.3.1",
     "node-window-manager": "^2.2.4",
